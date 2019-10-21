@@ -28,7 +28,7 @@ mean(a; dims=X)
 """
 module DimensionalData
 
-using RecipesBase, Statistics
+using RecipesBase, Statistics, LinearAlgebra
 
 using Base: tail, OneTo
 
@@ -36,15 +36,19 @@ export AbstractDimension, Dim
 
 export Selector, Near, Between, At
 
+export Order
+
 export AbstractDimensionalArray, DimensionalArray
 
 export dims, refdims, metadata, name, shortname, 
        val, label, units, order, bounds, <|
 
 include("interface.jl")
+include("order.jl")
 include("dimension.jl")
 include("selector.jl")
 include("array.jl")
+include("methods.jl")
 include("primitives.jl")
 include("utils.jl")
 include("plotrecipes.jl")

@@ -70,18 +70,21 @@ near(list, selval) = begin
     end
 end
 
-between(dim::AbDim, sel) = between(order(dim), val(dim), sel)
-between(::Forward, dim, sel) = 
-    searchsortedfirst(dim, first(sel)):searchsortedlast(dim, last(sel))
-between(::Reverse, dim, sel) = 
-    searchsortedfirst(dim, first(sel); rev=true):-1:searchsortedlast(dim, last(sel); rev=true)
+between(dim::AbDim, sel) = between(dimorder(dim), dim, sel)
+between(::Forward, dim::AbDim, sel) = 
+    rangeorder(dim, searchsortedfirst(val(dim), first(sel)), searchsortedlast(val(dim), last(sel)))
+between(::Reverse, dim::AbDim, sel) = 
+    rangeorder(dim, searchsortedlast(val(dim), last(sel); rev=true), 
+                    searchsortedfirst(val(dim), first(sel); rev=true))
+
+rangeorder(dim::AbDim, lower, upper) = rangeorder(arrayorder(dim), dim, lower, upper)
+rangeorder(::Forward, dim::AbDim, lower, upper) = lower:upper
+rangeorder(::Reverse, dim::AbDim, lower, upper) = length(val(dim)) - upper + 1:length(val(dim)) - lower + 1
 
 Base.@propagate_inbounds Base.getindex(a::AbstractArray, I::Vararg{Selector}) = 
     getindex(a, sel2indices(a, I)...) 
-Base.@propagate_inbounds Base.setindex!(a::AbstractArray, x, I::Vararg{Selector}) = begin
-    println(sel2indices(a, I))
+Base.@propagate_inbounds Base.setindex!(a::AbstractArray, x, I::Vararg{Selector}) = 
     setindex!(a, x, sel2indices(a, I)...)
-end
 Base.view(a::AbstractArray, I::Vararg{Selector}) = 
     view(a, sel2indices(a, I)...)
 

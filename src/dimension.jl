@@ -1,15 +1,4 @@
 """
-Trait indicating that the dimension is in the normal forward order. 
-"""
-struct Forward end
-
-"""
-Trait indicating that the dimension is in the reverse order. 
-Selector lookup and plotting will be reverse.
-"""
-struct Reverse end
-
-"""
 An AbstractDimension tags the dimensions in an AbstractArray.
 
 It can also contain spatial coordinates and their metadata. For simplicity,
@@ -42,6 +31,8 @@ const AllDimensions = Union{AbDim,AbDimTuple,AbDimType,
 val(dim::AbDim) = dim.val
 metadata(dim::AbDim) = dim.metadata
 order(dim::AbDim) = dim.order
+dimorder(dim::AbDim) = dimorder(order(dim))
+arrayorder(dim::AbDim) = arrayorder(order(dim))
 
 # DimensionalData interface methods
 rebuild(dim::AbDim, val) = basetype(dim)(val, metadata(dim), order(dim))
@@ -53,17 +44,16 @@ shortname(d::AbDim) = shortname(typeof(d))
 shortname(d::Type{<:AbDim}) = name(d)
 units(dim::AbDim) = metadata(dim) == nothing ? "" : get(metadata(dim), :units, "")
 
-bounds(a, args...) = bounds(dims(a), args...)
+bounds(A, args...) = bounds(dims(A), args...)
 bounds(dims::AbDimTuple, lookupdims::Tuple) = bounds(dims[[dimnum(dims, lookupdims)...]]...)
 bounds(dims::AbDimTuple, dim::DimOrDimType) = bounds(dims[dimnum(dims, dim)])
 bounds(dims::AbDimTuple) = (bounds(dims[1]), bounds(tail(dims))...)
 bounds(dims::Tuple{}) = ()
-bounds(dim::AbDim) = bounds(order(dim), dim)
+bounds(dim::AbDim) = bounds(dimorder(dim), dim)
 bounds(::Forward, dim::AbDim) = first(val(dim)), last(val(dim))
 bounds(::Reverse, dim::AbDim) = last(val(dim)), first(val(dim))
 
 # Base methods
-
 Base.eltype(dim::Type{<:AbDim{T}}) where T = T
 Base.length(dim::AbDim) = length(val(dim))
 Base.show(io::IO, dim::AbDim) = begin
@@ -78,72 +68,37 @@ Base.show(io::IO, dim::AbDim) = begin
     print(io, "\n")
 end
 
-
-
 # AbstractArray methods where dims are the dispatch argument
 
-@inline rebuildsliced(a, data, I) = rebuild(a, data, slicedims(a, I)...)
+@inline rebuildsliced(A, data, I) = rebuild(A, data, slicedims(A, I)...)
 
-Base.@propagate_inbounds Base.getindex(a::AbstractArray, dims::Vararg{<:AbDim{<:Number}}) =
-    getindex(a, dims2indices(a, dims)...)
-Base.@propagate_inbounds Base.getindex(a::AbstractArray, dims::Vararg{<:AbstractDimension}) = 
-    getindex(a, dims2indices(a, dims)...)
+Base.@propagate_inbounds Base.getindex(A::AbstractArray, dims::Vararg{<:AbDim{<:Number}}) =
+    getindex(A, dims2indices(A, dims)...)
+Base.@propagate_inbounds Base.getindex(A::AbstractArray, dims::Vararg{<:AbstractDimension}) = 
+    getindex(A, dims2indices(A, dims)...)
 
-Base.@propagate_inbounds Base.setindex!(a::AbstractArray, x, dims::Vararg{<:AbstractDimension}) =
-    setindex!(a, x, dims2indices(a, dims)...)
+Base.@propagate_inbounds Base.setindex!(A::AbstractArray, x, dims::Vararg{<:AbstractDimension}) =
+    setindex!(A, x, dims2indices(A, dims)...)
 
-Base.@propagate_inbounds Base.view(a::AbstractArray, dims::Vararg{<:AbstractDimension}) = 
-    view(a, dims2indices(a, dims)...)
+Base.@propagate_inbounds Base.view(A::AbstractArray, dims::Vararg{<:AbstractDimension}) = 
+    view(A, dims2indices(A, dims)...)
 
-@inline Base.axes(a::AbstractArray, dims::DimOrDimType) = axes(a, dimnum(a, dims))
-@inline Base.size(a::AbstractArray, dims::DimOrDimType) = size(a, dimnum(a, dims))
+@inline Base.axes(A::AbstractArray, dims::DimOrDimType) = axes(A, dimnum(A, dims))
+@inline Base.size(A::AbstractArray, dims::DimOrDimType) = size(A, dimnum(A, dims))
 
-
-# Dimension reduction methods where dims are an argument
-# targeting underscore _methods so we can use dispatch ont the dims arg
-
-for (mod, fname) in ((:Base, :sum), (:Base, :prod), (:Base, :maximum), (:Base, :minimum), (:Statistics, :mean))
-    _fname = Symbol('_', fname)
-    @eval begin
-        ($mod.$_fname)(a::AbstractArray{T,N}, dims::AllDimensions) where {T,N} =
-            ($mod.$_fname)(a, dimnum(a, dims))
-        ($mod.$_fname)(f, a::AbstractArray{T,N}, dims::AllDimensions) where {T,N} =
-            ($mod.$_fname)(f, a, dimnum(a, dims))
-    end
-end
-
-for fname in (:std, :var)
-    _fname = Symbol('_', fname)
-    @eval function (Statistics.$_fname)(a::AbstractArray, corrected::Bool, mean, dims::AllDimensions)
-        (Statistics.$_fname)(a, corrected, mean, dimnum(a, dims))
-    end
-end
-
-Statistics._median(a::AbstractArray, dims::AllDimensions) =
-    Statistics._median(a, dimnum(a, dims))
-Base._mapreduce_dim(f, op, nt::NamedTuple{(),<:Tuple}, A::AbstractArray, dims::AllDimensions) =
-    Base._mapreduce_dim(f, op, nt, A, dimnum(A, dims))
-# Unfortunately Base/accumulate.jl kwargs methods all force dims to be Integer.
-# accumulate wont work unless that is relaxed, or we copy half of the file here.
-Base._accumulate!(op, B, A, dims::AllDimensions, init::Union{Nothing, Some}) =
-    Base._accumulate!(op, B, A, dimnum(A, dims), init)
-
-Base._dropdims(a::AbstractArray, dim::Union{AbDim,Type{<:AbDim}}) = 
-    rebuildsliced(a, Base._dropdims(a, dimnum(a, dim)), dims2indices(a, basetype(dim)(1)))
-Base._dropdims(a::AbstractArray, dims::AbDimTuple) = 
-    rebuildsliced(a, Base._dropdims(a, dimnum(a, dims)), 
-                  dims2indices(a, Tuple((basetype(d)(1) for d in dims))))
 
 #= SplitApplyCombine methods?
 Should allow groupby using dims lookup to make this worth the dependency
 Like group by time/lattitude/height band etc.
 
-SplitApplyCombine.splitdims(a::AbstractArray, dims::AllDimensions) =
-    SplitApplyCombine.splitdims(a, dimnum(a, dims))
+SplitApplyCombine.splitdims(A::AbstractArray, dims::AllDimensions) =
+    SplitApplyCombine.splitdims(A, dimnum(A, dims))
 
-SplitApplyCombine.splitdimsview(a::AbstractArray, dims::AllDimensions) =
-    SplitApplyCombine.splitdimsview(a, dimnum(a, dims))
+SplitApplyCombine.splitdimsview(A::AbstractArray, dims::AllDimensions) =
+    SplitApplyCombine.splitdimsview(A, dimnum(A, dims))
 =#
+
+
 
 
 """
@@ -165,7 +120,7 @@ struct Dim{X,T,M,O} <: AbstractParametricDimension{X,T,M,O}
         new{X,typeof(val),typeof(metadata),typeof(order)}(val, metadata, order)
 end
 
-@inline Dim{X}(val=:; metadata=nothing, order=Forward()) where X = 
+@inline Dim{X}(val=:; metadata=nothing, order=Order()) where X = 
     Dim{X}(val, metadata, order)
 name(::Type{<:Dim{X}}) where X = "Dim $X"
 shortname(::Type{<:Dim{X}}) where X = "$X"
@@ -189,7 +144,7 @@ macro dim(typ, name=string(typ), shortname=string(typ))
             metadata::M
             order::O
         end
-        $typ(val=:; metadata=nothing, order=Forward()) = $typ(val, metadata, order)
+        $typ(val=:; metadata=nothing, order=DimensionalData.Order()) = $typ(val, metadata, order)
         DimensionalData.name(::Type{<:$typ}) = $name
         DimensionalData.shortname(::Type{<:$typ}) = $shortname
     end)
